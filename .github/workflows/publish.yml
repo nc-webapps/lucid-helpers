@@ -1,0 +1,78 @@
+name: Publish to Verdaccio
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Version tag to publish (e.g. v1.0.0)'
+        required: true
+
+jobs:
+  publish:
+    # Tag ruleset (admin push + signed tags) is the platform-side gate;
+    # this `if:` is the code-side defense-in-depth. Pattern lifted from
+    # nc-webapps/sso-client per BP-LH-2605-01.
+    if: contains(fromJson('["johngoebel","claude"]'), github.actor)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Run tests
+        run: npm test
+
+      - name: Pack tarball
+        id: pack
+        run: |
+          TARBALL=$(npm pack --silent | tail -1)
+          echo "tarball=$TARBALL" >> "$GITHUB_OUTPUT"
+          ls -la "$TARBALL"
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H "${{ secrets.DROPLET_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Publish to Verdaccio via SSH
+        # npm publish from GitHub Actions against the public Verdaccio URL fails due to
+        # npm 11's auth header handling for scoped packages behind a proxy. We bypass this
+        # by scp-ing the tarball to the server and publishing from the deploy user's
+        # shell, which uses the known-working localhost:4873 auth token.
+        run: |
+          TARBALL="${{ steps.pack.outputs.tarball }}"
+          REMOTE_PATH="/tmp/$TARBALL"
+          SSH_OPTS="-o StrictHostKeyChecking=no -i ~/.ssh/id_ed25519"
+
+          scp $SSH_OPTS "$TARBALL" "root@${{ secrets.DROPLET_HOST }}:$REMOTE_PATH"
+
+          ssh $SSH_OPTS "root@${{ secrets.DROPLET_HOST }}" "
+            set -e
+            chown deploy:deploy '$REMOTE_PATH'
+            su - deploy -c 'cd /tmp && npm publish $TARBALL'
+            rm -f '$REMOTE_PATH'
+          "
+
+      - name: Verify package published
+        run: |
+          VERSION="${{ inputs.tag || github.ref_name }}"
+          VERSION="${VERSION#v}"
+          echo "Verifying @nc-webapps/lucid-helpers@$VERSION is installable..."
+          mkdir /tmp/verify && cd /tmp/verify
+          echo '@nc-webapps:registry=https://npm.nc-webapps.com' > .npmrc
+          npm init -y >/dev/null
+          npm install "@nc-webapps/lucid-helpers@$VERSION"
+          node --input-type=module -e "import('@nc-webapps/lucid-helpers').then(() => { console.log('✓ import ok'); process.exit(0) })"
