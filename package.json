@@ -1,0 +1,38 @@
+{
+  "name": "@nc-webapps/lucid-helpers",
+  "version": "1.0.0",
+  "description": "Shared Lucid model column option presets for nc-webapps services",
+  "license": "MIT",
+  "type": "module",
+  "main": "build/src/index.js",
+  "types": "build/src/index.d.ts",
+  "engines": { "node": ">=24" },
+  "exports": {
+    ".": {
+      "types": "./build/src/index.d.ts",
+      "import": "./build/src/index.js"
+    }
+  },
+  "files": [
+    "build/src",
+    "LICENSE",
+    "README.md",
+    "CHANGELOG.md"
+  ],
+  "peerDependencies": {
+    "@adonisjs/core": "^6.0.0 || ^7.0.0"
+  },
+  "publishConfig": {
+    "registry": "https://npm.nc-webapps.com"
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "node --test build/tests/*.spec.js",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run build"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0",
+    "@types/node": "~24.x"
+  }
+}
