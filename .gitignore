@@ -1,0 +1,18 @@
+# Environment and secrets — never commit these
+.env
+.env.local
+.env.production
+.env-token
+*.pem
+*.key
+
+# Build output
+build/
+
+# Dependencies
+node_modules/
+
+# Editor and OS artifacts
+.DS_Store
+*.tgz
+.claude/
